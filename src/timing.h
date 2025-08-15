@@ -318,7 +318,7 @@ typedef struct {
 #define _APPLE_OSLOG_START(block)      _jl_os_signpost_start(block);
 #define _APPLE_OSLOG_STOP(block)       _jl_os_signpost_stop(block);
 #else
-#define _APPLE_OSLOG_MEMBER
+#define _APPLE_OSLOG_EVENT_MEMBER
 #define _APPLE_OSLOG_BLOCK_MEMBER
 #define _APPLE_OSLOG_START(block)
 #define _APPLE_OSLOG_STOP(block)
