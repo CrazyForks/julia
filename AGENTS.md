@@ -19,13 +19,18 @@ will not be reflected, unless you use `Revise`.
 
 ## For all changes
 
-1. Run `make check-whitespace` before creating the PR to make sure you're not committing any whitespace errors.
+1. Run `make fix-whitespace` before creating the PR to make sure you're not committing any whitespace errors.
 
 ## Building Julia
 
 If you made changes to the runtime (any files in `src/`), you will need to rebuild
 julia. Run `make -j` to rebuild julia. This process may take up to 10 minutes
 depending on your changes.
+
+After `make` run these static analysis checks:
+  - `make -C src clang-sa-<filename>` (replace `<filename>` with the basename of the file you modified)
+  - `make -C src clang-sagc-<filename>` which may require adding JL_GC_PUSH arguments, or JL_GC_PROMISE_ROOTED statements., or require fixing locks. Remember arguments are assumed rooted, so check the callers to make sure that is handled. If the value is being temporarily moved around in a struct or arraylist, `JL_GC_PROMISE_ROOTED(struct->field)` may be needed as a statement (it return void) immediately after reloading the struct before any use of struct. Put the promise as early in the code as is legal.
+  - `make -C src clang-tidy-<filename>`
 
 ## Using Revise
 
@@ -38,10 +43,23 @@ The test system supports doing this automatically (see below).
 
 ### Doctests
 
-If you have changed doctests (i.e. any `jldoctest` code block), you should run the doctests before
-preparing a PR. See `doc/README.md` for how to do this. For instructions on writing doctests, see
-`doc/src/devdocs/contributing/jldoctests.md`. Note that the doctests may take up to 15 minutes.
-Do not terminate the doctests before completion. If you are ChatGPT, you may have to increase yield_timeout_ms.
+#### Writing doctests
+
+If you are asked to write new doctests, first review `doc/src/devdocs/contributing/jldoctests.md`
+for best practices.
+
+#### Verifying doctests
+If you have changed any `jldoctest` code blocks you should take
+the following steps to verify your work:
+- Review `doc/src/devdocs/contributing/jldoctests.md`. In particular, determine
+  if any of the changed doctests require filters, labels or setup code.
+- Run the doctests to verify that your change works:
+    - To run doctest with the pre-built juliaup: `make -C doc doctest=true  revise=true JULIA_EXECUTABLE=$HOME/.juliaup/bin/julia`
+    - To run doctest with in-trr julia (preferred): `make -C doc doctest=true revise=true`. Do not pass any other options.
+    - IMPORTANT: The doctests may take up to 15 minutes. Do NOT terminate the doctests before completion. Do NOT use a timeout for doctests.
+    - If you are ChatGPT, you may have to increase yield_timeout_ms.
+
+Follow these steps for EVERY change you make in a doctest.
 
 ### Test changes
 
@@ -62,6 +80,13 @@ When modifying external dependencies (patches in `deps/patches/` or version upda
    - Test the full build of the dependency: `make -C deps USE_BINARYBUILDER=0 compile-<depname>`
    - Prefer using the full upstream commit in `git am` format (e.g., `git format-patch`) which includes proper commit metadata
 3. When updating dependency versions, ensure all associated patches still apply
+
+### External JLLs
+
+To update a JLL to the latest version:
+- Update the version number in the appropriate jll folder
+- If the dependencies in the upstream jll changed, update the Project.toml
+- Run `make -f contrib/refresh_checksums.mk <jll>` to update the checksums. This may take a few minutes.
 
 ### Writing code
 After writing code, look up the docstring for each function you used. If there
