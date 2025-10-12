@@ -516,7 +516,7 @@ let src = code_typed((Int,); interp=CustomDataInterp()) do x
     end |> only |> first
     @test count(isinvoke(:sin), src.code) == 1
     @test count(isinvoke(:cos), src.code) == 1
-    @test_broken count(isinvoke(:+), src.code) == 0
+    @test count(isinvoke(:+), src.code) == 0
 end
 
 # ephemeral cache mode
@@ -538,7 +538,7 @@ end
 
 @newinterp InvokeInterp
 struct InvokeOwner end
-codegen = IdDict{CodeInstance, CodeInfo}()
+global codegen::IdDict{CodeInstance, CodeInfo} = IdDict{CodeInstance, CodeInfo}()
 Compiler.cache_owner(::InvokeInterp) = InvokeOwner()
 Compiler.codegen_cache(::InvokeInterp) = codegen
 let interp = InvokeInterp()

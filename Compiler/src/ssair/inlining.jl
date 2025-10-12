@@ -837,6 +837,7 @@ function resolve_todo(mi::MethodInstance, @nospecialize(call_result::Union{Nothi
     et = InliningEdgeTracker(state)
 
     preserve_local_sources = true
+    cached_ci = nothing
     if isa(call_result, VolatileInferenceResult)
         inferred_result = get_local_code(call_result.inf_result)
         # volatile inference result can be inlined destructively
@@ -846,9 +847,9 @@ function resolve_todo(mi::MethodInstance, @nospecialize(call_result::Union{Nothi
     elseif isa(call_result, ConstPropResult)
         inferred_result = get_local_code(call_result.result)
     elseif isa(call_result, CachedCallResult)
-        codeinst = call_result.edge
-        if use_const_api(codeinst)
-            inferred_result = ConstantCase(quoted(call_result.edge.rettype_const), codeinst)
+        cached_ci = call_result.edge
+        if use_const_api(cached_ci)
+            inferred_result = ConstantCase(quoted(call_result.edge.rettype_const), cached_ci)
         else
             inferred_result = InferredCode(call_result.src, call_result.effects, call_result.edge)
         end
@@ -872,8 +873,8 @@ function resolve_todo(mi::MethodInstance, @nospecialize(call_result::Union{Nothi
         return compileable_specialization(edge, effects, et, info, state)
 
     add_inlining_edge!(et, edge)
-    if inferred_result isa CodeInstance
-        ir, spec_info, debuginfo = retrieve_ir_for_inlining(inferred_result, src)
+    if cached_ci isa CodeInstance
+        ir, spec_info, debuginfo = retrieve_ir_for_inlining(cached_ci, src)
     else
         ir, spec_info, debuginfo = retrieve_ir_for_inlining(mi, src, preserve_local_sources)
     end

@@ -1318,16 +1318,19 @@ end
 # Also, `codegen_cache` itself should perhaps be cleaned up and replaced by making good
 # use of the local inference cache.
 function ci_get_source(interp::NativeInterpreter, code::CodeInstance)
-    codegen = codegen_cache(interp)
-    codegen === nothing && return nothing
-    use_const_api(code) &&
-        return codeinfo_for_const(interp, get_ci_mi(code), WorldRange(code.min_world, code.max_world), code.edges, code.rettype_const)
-    inf = get(codegen, code, nothing)
-    inf === nothing || return inf
-    return @atomic :monotonic code.inferred
+    return _ci_get_source(interp, code, codegen_cache(interp))
 end
 function ci_get_source(interp::AbstractInterpreter, code::CodeInstance)
+    use_const_api(code) &&
+        return codeinfo_for_const(interp, get_ci_mi(code), WorldRange(code.min_world, code.max_world), code.edges, code.rettype_const)
     return @atomic :monotonic code.inferred
+end
+
+function _ci_get_source(interp::AbstractInterpreter, code::CodeInstance, codegen::IdDict{CodeInstance,CodeInfo})
+    use_const_api(code) &&
+        return codeinfo_for_const(interp, get_ci_mi(code), WorldRange(code.min_world, code.max_world), code.edges, code.rettype_const)
+    src = get(codegen, code, nothing)
+    return src !== nothing ? src : @atomic :monotonic code.inferred
 end
 
 """
@@ -1556,7 +1559,7 @@ function add_codeinsts_to_jit!(interp::AbstractInterpreter, ci, source_mode::UIn
         callee = pop!(workqueue)
         ci_has_invoke(callee) && continue
         isinspected(workqueue, callee) && continue
-        src = ci_get_source(interp, callee)
+        src = _ci_get_source(interp, callee, codegen)
         if !isa(src, CodeInfo)
             newcallee = typeinf_ext(workqueue.interp, callee.def, source_mode) # always SOURCE_MODE_ABI
             if newcallee isa CodeInstance
