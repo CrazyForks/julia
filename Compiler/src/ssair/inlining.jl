@@ -837,16 +837,8 @@ function resolve_todo(mi::MethodInstance, @nospecialize(call_result::Union{Nothi
     et = InliningEdgeTracker(state)
 
     preserve_local_sources = true
-    cached_ci = nothing
     if isa(call_result, InferenceResult)
         inferred_result = get_local_code(call_result)
-    elseif isa(call_result, CachedCallResult)
-        cached_ci = call_result.edge
-        if use_const_api(cached_ci)
-            inferred_result = ConstantCase(quoted(call_result.edge.rettype_const), cached_ci)
-        else
-            inferred_result = InferredCode(call_result.src, call_result.effects, call_result.edge)
-        end
     else # there is no cached source available for this, but there might be code for the compilation sig
         return compileable_specialization(mi, Effects(), et, info, state)
     end
@@ -867,24 +859,8 @@ function resolve_todo(mi::MethodInstance, @nospecialize(call_result::Union{Nothi
         return compileable_specialization(edge, effects, et, info, state)
 
     add_inlining_edge!(et, edge)
-    if cached_ci isa CodeInstance
-        ir, spec_info, debuginfo = retrieve_ir_for_inlining(cached_ci, src)
-    else
-        ir, spec_info, debuginfo = retrieve_ir_for_inlining(mi, src, preserve_local_sources)
-    end
+    ir, spec_info, debuginfo = retrieve_ir_for_inlining(mi, src, preserve_local_sources)
     return InliningTodo(mi, ir, spec_info, debuginfo, effects)
-end
-
-# the special resolver for :invoke-d call
-function resolve_todo(mi::MethodInstance, @nospecialize(info::CallInfo), flag::UInt32,
-                      state::InliningState)
-    # Try to use the result from InvokeCallInfo if available
-    call_result = nothing
-    if isa(info, InvokeCallInfo)
-        call_result = info.result
-    end
-    # Delegate to the general resolver
-    return resolve_todo(mi, call_result, info, flag, state)
 end
 
 function validate_sparams(sparams::SimpleVector)
@@ -1296,8 +1272,6 @@ function handle_any_const_result!(cases::Vector{InliningCase},
         return handle_concrete_result!(cases, call_result, match, info, state)
     elseif isa(call_result, SemiConcreteResult)
         return handle_semi_concrete_result!(cases, call_result, match, info, flag, state)
-    elseif isa(call_result, InferenceResult)
-        return handle_const_prop_result!(cases, call_result, match, info, flag, state; allow_typevars)
     else
         return handle_match!(cases, call_result, match, argtypes, info, flag, state; allow_typevars)
     end
@@ -1306,8 +1280,6 @@ end
 function info_effects(@nospecialize(call_result::Union{Nothing,InferredCallResult}), match::MethodMatch, state::InliningState)
     if call_result === nothing
         return Effects()
-    elseif isa(call_result, CachedCallResult)
-        return call_result.effects
     elseif isa(call_result, InferenceResult)
         return call_result.ipo_effects
     elseif isa(call_result, ConcreteResult)
@@ -1404,20 +1376,8 @@ function handle_match!(
     # during abstract interpretation: for the purpose of inlining, we can just skip
     # processing this dispatch candidate (unless unmatched type parameters are present)
     !allow_typevars && any(case::InliningCase->case.sig === match.spec_types, cases) && return true
-    item = analyze_method!(call_result, match, argtypes, info, flag, state; allow_typevars)
-    item === nothing && return false
-    push!(cases, InliningCase(match.spec_types, item))
-    return true
-end
 
-function handle_const_prop_result!(cases::Vector{InliningCase}, result::InferenceResult,
-    match::MethodMatch, @nospecialize(info::CallInfo), flag::UInt32, state::InliningState;
-    allow_typevars::Bool)
-    mi = result.linfo
-    if !validate_sparams(mi.sparam_vals)
-        (allow_typevars && !may_have_fcalls(mi.def::Method)) || return false
-    end
-    item = resolve_todo(mi, result, info, flag, state)
+    item = analyze_method!(call_result, match, argtypes, info, flag, state; allow_typevars)
     item === nothing && return false
     push!(cases, InliningCase(match.spec_types, item))
     return true
@@ -1499,14 +1459,10 @@ function handle_opaque_closure_call!(todo::Vector{Pair{Int,Any}},
     ir::IRCode, idx::Int, stmt::Expr, info::OpaqueClosureCallInfo,
     flag::UInt32, sig::Signature, state::InliningState)
     result = info.result
-    if isa(result, InferenceResult)
-        mi = result.linfo
-        validate_sparams(mi.sparam_vals) || return nothing
-        item = resolve_todo(mi, result, info, flag, state)
-    elseif isa(result, ConcreteResult)
+    if isa(result, ConcreteResult)
         item = concrete_result_item(result, info, state)
     elseif isa(result, SemiConcreteResult)
-        item = item = semiconcrete_result_item(result, info, flag, state)
+        item = semiconcrete_result_item(result, info, flag, state)
     else
         item = analyze_method!(result, info.match, sig.argtypes, info, flag, state; allow_typevars=false)
     end
@@ -1575,12 +1531,26 @@ function handle_finalizer_call!(ir::IRCode, idx::Int, stmt::Expr, info::Finalize
     return nothing
 end
 
+# the special resolver for :invoke-d call
 function handle_invoke_expr!(todo::Vector{Pair{Int,Any}}, ir::IRCode,
     idx::Int, stmt::Expr, @nospecialize(info::CallInfo), flag::UInt32, sig::Signature, state::InliningState)
     edge = stmt.args[1]
     mi = isa(edge, MethodInstance) ? edge : get_ci_mi(edge::CodeInstance)
-    case = resolve_todo(mi, info, flag, state)
-    handle_single_case!(todo, ir, idx, stmt, case, false)
+    call_result = nothing
+    let info = info
+        info isa MethodResultPure && (info = info.info)
+        if isa(info, InvokeCallInfo)
+            call_result = info.result
+        elseif isa(info, MethodMatchInfo)
+            # We didn't preserve the converted info when inserting :invoke node so we cannot recover this with accuracy.
+            # Since that info isn't used, but this is enough for the "apply `ssa_inlining_pass` multiple times" test
+            if length(info.edges) == length(info.results) == 1
+                call_result = getresult(info, 1)
+            end
+        end
+    end
+    item = resolve_todo(mi, call_result, info, flag, state)
+    handle_single_case!(todo, ir, idx, stmt, item)
     return nothing
 end
 

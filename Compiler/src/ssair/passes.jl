@@ -1586,6 +1586,9 @@ function try_inline_finalizer!(ir::IRCode, argexprs::Vector{Any}, idx::Int,
             add_inlining_edge!(et, code)
             return true
         end
+        # COMBAK: this has awkward and unreliable global cache effects, but
+        # this doesn't respect the bottom-up inliner order so we do not have
+        # CallInfo anymore. See `handle_finalizer_call!` too.
         src = ci_get_source(inlining.interp, code)
     else
         return false

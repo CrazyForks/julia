@@ -556,7 +556,7 @@ function add_edges!(edges::Vector{Any}, info::CallInfo)
 end
 nsplit(info::CallInfo) = nsplit_impl(info)::Union{Nothing,Int}
 getsplit(info::CallInfo, idx::Int) = getsplit_impl(info, idx)::MethodLookupResult
-getresult(info::CallInfo, idx::Int) = getresult_impl(info, idx)#=::Union{Nothing,ConstResult}=#
+getresult(info::CallInfo, idx::Int) = getresult_impl(info, idx)#=::Union{Nothing,InferenceResult}=#
 
 add_edges_impl(::Vector{Any}, ::CallInfo) = error("""
     All `CallInfo` is required to implement `add_edges_impl(::Vector{Any}, ::CallInfo)`""")

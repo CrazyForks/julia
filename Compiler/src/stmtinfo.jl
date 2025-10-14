@@ -26,12 +26,6 @@ add_edges_impl(::Vector{Any}, ::NoCallInfo) = nothing
 
 # InferredCallResult is defined in types.jl so that InferenceResult can inherit from it
 
-struct CachedCallResult <: InferredCallResult
-    src
-    effects::Effects
-    edge::CodeInstance
-end
-
 struct ConcreteResult <: InferredCallResult
     edge::CodeInstance
     effects::Effects

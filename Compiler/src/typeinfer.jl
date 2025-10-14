@@ -968,11 +968,17 @@ function return_cached_result(interp::AbstractInterpreter, method::Method, codei
     exct = codeinst.exctype
     effects = ipo_effects(codeinst)
     src = ci_get_source(interp, codeinst)
-    call_result = CachedCallResult(src, effects, codeinst)
+    # Create an InferenceResult from cached data
+    inf_result = InferenceResult(codeinst.def, fallback_lattice)
+    inf_result.result = rt
+    inf_result.exc_result = exct
+    inf_result.src = src
+    inf_result.ipo_effects = effects
+    inf_result.ci_as_edge = codeinst
     update_valid_age!(caller, WorldRange(min_world(codeinst), max_world(codeinst)))
     caller.time_caches += reinterpret(Float16, codeinst.time_infer_total)
     caller.time_caches += reinterpret(Float16, codeinst.time_infer_cache_saved)
-    return Future(MethodCallResult(interp, caller, method, rt, exct, effects, codeinst, edgecycle, edgelimited, call_result))
+    return Future(MethodCallResult(interp, caller, method, rt, exct, effects, codeinst, edgecycle, edgelimited, inf_result))
 end
 
 function MethodCallResult(::AbstractInterpreter, sv::AbsIntState, method::Method,
