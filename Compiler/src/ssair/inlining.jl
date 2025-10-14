@@ -878,27 +878,13 @@ end
 # the special resolver for :invoke-d call
 function resolve_todo(mi::MethodInstance, @nospecialize(info::CallInfo), flag::UInt32,
                       state::InliningState)
-    if !OptimizationParams(state.interp).inlining || is_stmt_noinline(flag)
-        return nothing
+    # Try to use the result from InvokeCallInfo if available
+    call_result = nothing
+    if isa(info, InvokeCallInfo)
+        call_result = info.result
     end
-
-    et = InliningEdgeTracker(state)
-
-    cached_result = get_cached_code(state, mi)
-    if cached_result isa ConstantCase
-        add_inlining_edge!(et, cached_result.edge)
-        return cached_result
-    elseif cached_result isa CodeInstance
-        src = ci_get_source(state.interp, cached_result)
-        effects = decode_effects(cached_result.ipo_purity_bits)
-    else # there is no cached source available, bail out
-        return nothing
-    end
-
-    src_inlining_policy(state.interp, mi, src, info, flag) || return nothing
-    ir, spec_info, debuginfo = retrieve_ir_for_inlining(cached_result, src)
-    add_inlining_edge!(et, cached_result)
-    return InliningTodo(mi, ir, spec_info, debuginfo, effects)
+    # Delegate to the general resolver
+    return resolve_todo(mi, call_result, info, flag, state)
 end
 
 function validate_sparams(sparams::SimpleVector)
