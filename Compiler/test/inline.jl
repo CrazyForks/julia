@@ -1856,7 +1856,7 @@ let i::Int, continue_::Bool
     i = findfirst(isinvoke(:func_mul_int), ir.stmts.stmt)
     @test i !== nothing
     # now delete the callsite flag, and see the second inlining pass can inline the call
-    @eval Compiler $ir.stmts[$i][:flag] &= ~IR_FLAG_NOINLINE
+    ir.stmts[i][:flag] &= ~Compiler.IR_FLAG_NOINLINE
     inlining = Compiler.InliningState(interp)
     ir = Compiler.ssa_inlining_pass!(ir, inlining, false)
     @test findfirst(isinvoke(:func_mul_int), ir.stmts.stmt) === nothing
@@ -1879,22 +1879,12 @@ let i::Int, continue_::Bool
     ir, = only(Base.code_ircode(multi_inlining2, (Int,Int); optimize_until="CC: INLINING", interp))
     i = findfirst(isinvoke(:func_mul_int), ir.stmts.stmt)
     @test i !== nothing
-    # now delete the callsite flag, and see the second inlining pass can inline the call
-    @eval Compiler $ir.stmts[$i][:flag] &= ~IR_FLAG_NOINLINE
+    # now delete the callsite flag, and see the second inlining pass does not inline the call, since inference recorded it should not
+    ir.stmts[i][:flag] &= ~Compiler.IR_FLAG_NOINLINE
     inlining = Compiler.InliningState(interp)
     ir = Compiler.ssa_inlining_pass!(ir, inlining, false)
-    @test findfirst(isinvoke(:func_mul_int), ir.stmts.stmt) === nothing
-    @test (i = findfirst(iscall((ir, Core.Intrinsics.mul_int)), ir.stmts.stmt)) !== nothing
-    lins = Compiler.IRShow.buildLineInfoNode(ir.debuginfo, nothing, i)
-    @test_broken (continue_ = length(lins) == 3) # see TODO in `ir_inline_linetable!`
-    if continue_
-        def1 = lins[1].method
-        @test def1 isa Core.MethodInstance && def1.def.name === :multi_inlining2
-        def2 = lins[2].method
-        @test def2 isa Core.MethodInstance && def2.def.name === :call_func_mul_int
-        def3 = lins[3].method
-        @test def3 isa Core.MethodInstance && def3.def.name === :call_func_mul_int
-    end
+    @test findfirst(isinvoke(:func_mul_int), ir.stmts.stmt) !== nothing
+    @test findfirst(iscall((ir, Core.Intrinsics.mul_int)), ir.stmts.stmt) === nothing
 end
 
 # Test special purpose inliner for Core.ifelse

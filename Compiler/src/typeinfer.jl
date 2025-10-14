@@ -963,18 +963,21 @@ end
 ipo_effects(code::CodeInstance) = decode_effects(code.ipo_purity_bits)
 
 # return cached result of regular inference
-function return_cached_result(interp::AbstractInterpreter, method::Method, codeinst::CodeInstance, caller::AbsIntState, edgecycle::Bool, edgelimited::Bool)
+function return_cached_result(interp::AbstractInterpreter, method::Method, codeinst::CodeInstance, @nospecialize(src), caller::AbsIntState, edgecycle::Bool, edgelimited::Bool)
     rt = cached_return_type(codeinst)
     exct = codeinst.exctype
     effects = ipo_effects(codeinst)
-    src = ci_get_source(interp, codeinst)
-    # Create an InferenceResult from cached data
-    inf_result = InferenceResult(codeinst.def, fallback_lattice)
-    inf_result.result = rt
-    inf_result.exc_result = exct
-    inf_result.src = src
-    inf_result.ipo_effects = effects
-    inf_result.ci_as_edge = codeinst
+    if src !== nothing
+        # Create an InferenceResult to preserve cached source lookup
+        inf_result = InferenceResult(codeinst.def, typeinf_lattice(interp))
+        inf_result.result = rt
+        inf_result.exc_result = exct
+        inf_result.src = src
+        inf_result.ipo_effects = effects
+        inf_result.ci_as_edge = codeinst
+    else
+        inf_result = nothing
+    end
     update_valid_age!(caller, WorldRange(min_world(codeinst), max_world(codeinst)))
     caller.time_caches += reinterpret(Float16, codeinst.time_infer_total)
     caller.time_caches += reinterpret(Float16, codeinst.time_infer_cache_saved)
@@ -1044,19 +1047,23 @@ function typeinf_edge(interp::AbstractInterpreter, method::Method, @nospecialize
     cache_mode = CACHE_MODE_GLOBAL # cache edge targets globally by default
     force_inline = is_stmt_inline(get_curr_ssaflag(caller))
     edge_ci = nothing
-    # check cache with SOURCE_MODE_NOT_REQUIRED source_mode first,
-    # then with SOURCE_MODE_GET_SOURCE if inlining is needed
     let codeinst = get(code_cache(interp), mi, nothing)
         if codeinst isa CodeInstance # return existing rettype if the code is already inferred
             inferred = @atomic :monotonic codeinst.inferred
             need_inlineable_code = may_optimize(interp) && (force_inline || is_inlineable(inferred))
-            if need_inlineable_code && !ci_meets_requirement(interp, codeinst, SOURCE_MODE_GET_SOURCE)
-                # Re-infer to get the appropriate source representation
-                cache_mode = CACHE_MODE_LOCAL
-                edge_ci = codeinst
+            if need_inlineable_code
+                src = ci_try_get_source(interp, codeinst)
+                if src === nothing
+                    # Re-infer to get the appropriate source representation
+                    cache_mode = CACHE_MODE_LOCAL
+                    edge_ci = codeinst
+                else # no reinference needed
+                    @assert codeinst.def === mi "MethodInstance for cached edge does not match"
+                    return return_cached_result(interp, method, codeinst, src, caller, edgecycle, edgelimited)
+                end
             else # no reinference needed
                 @assert codeinst.def === mi "MethodInstance for cached edge does not match"
-                return return_cached_result(interp, method, codeinst, caller, edgecycle, edgelimited)
+                return return_cached_result(interp, method, codeinst, nothing, caller, edgecycle, edgelimited)
             end
         end
     end
@@ -1084,12 +1091,18 @@ function typeinf_edge(interp::AbstractInterpreter, method::Method, @nospecialize
                 ci_from_engine = nothing
                 inferred = @atomic :monotonic codeinst.inferred
                 need_inlineable_code = may_optimize(interp) && (force_inline || is_inlineable(inferred))
-                if need_inlineable_code && !ci_meets_requirement(interp, codeinst, SOURCE_MODE_GET_SOURCE)
-                    cache_mode = CACHE_MODE_LOCAL
-                    edge_ci = codeinst
+                if need_inlineable_code
+                    src = ci_try_get_source(interp, codeinst)
+                    if src === nothing
+                        cache_mode = CACHE_MODE_LOCAL
+                        edge_ci = codeinst
+                    else
+                        @assert codeinst.def === mi "MethodInstance for cached edge does not match"
+                        return return_cached_result(interp, method, codeinst, src, caller, edgecycle, edgelimited)
+                    end
                 else
                     @assert codeinst.def === mi "MethodInstance for cached edge does not match"
-                    return return_cached_result(interp, method, codeinst, caller, edgecycle, edgelimited)
+                    return return_cached_result(interp, method, codeinst, nothing, caller, edgecycle, edgelimited)
                 end
             end
         else
@@ -1312,39 +1325,44 @@ function ci_has_abi(interp::AbstractInterpreter, code::CodeInstance)
     return ci_has_source(interp, code)
 end
 
-# TODO This utility is incomplete and should be removed in the future.
-# For external abstract interpreters that don't provide `codegen_cache`,
-# it should look up the local inference cache and complement cases where there's no source
-# in the global cache, as we do by looking up `codegen_cache` for `NativeInterpreter`.
-# Also, `codegen_cache` itself should perhaps be cleaned up and replaced by making good
-# use of the local inference cache.
-function ci_get_source(interp::NativeInterpreter, code::CodeInstance)
-    return _ci_get_source(interp, code, codegen_cache(interp))
-end
 function ci_get_source(interp::AbstractInterpreter, code::CodeInstance)
+    codegen = codegen_cache(interp)
+    if codegen !== nothing
+        src = get(codegen, code, nothing)
+        src !== nothing && return src
+    end
     use_const_api(code) &&
         return codeinfo_for_const(interp, get_ci_mi(code), WorldRange(code.min_world, code.max_world), code.edges, code.rettype_const)
     return @atomic :monotonic code.inferred
 end
 
-function _ci_get_source(interp::AbstractInterpreter, code::CodeInstance, codegen::IdDict{CodeInstance,CodeInfo})
-    use_const_api(code) &&
-        return codeinfo_for_const(interp, get_ci_mi(code), WorldRange(code.min_world, code.max_world), code.edges, code.rettype_const)
-    src = get(codegen, code, nothing)
-    return src !== nothing ? src : @atomic :monotonic code.inferred
-end
-
 """
     ci_has_source(interp::AbstractInterpreter, code::CodeInstance)
 
-Determine whether this CodeInstance is something that could be compiled from
-source that interp has.
+Determine whether this CodeInstance is something that will return something
+compileable by ci_get_source.
 """
 function ci_has_source(interp::AbstractInterpreter, code::CodeInstance)
     codegen = codegen_cache(interp)
     codegen === nothing && return false
     use_const_api(code) && return true
-    haskey(codegen, code) && return true
+    return ci_try_get_source(interp, code) !== nothing
+end
+
+# Get source if available for inlining, otherwise return nothing
+# populates codegen cache for code, if successful
+function ci_try_get_source(interp::AbstractInterpreter, code::CodeInstance)
+    codegen = codegen_cache(interp)
+    if codegen === nothing
+        return nothing
+    end
+    if use_const_api(code)
+        return codeinfo_for_const(interp, get_ci_mi(code), WorldRange(code.min_world, code.max_world), code.edges, code.rettype_const)
+    end
+    src = get(codegen, code, nothing)
+    if src !== nothing
+        return src
+    end
     inf = @atomic :monotonic code.inferred
     if isa(inf, String)
         inf = _uncompressed_ir(code, inf)
@@ -1352,12 +1370,12 @@ function ci_has_source(interp::AbstractInterpreter, code::CodeInstance)
     if code.owner === nothing
         if isa(inf, CodeInfo)
             codegen[code] = inf
-            return true
+            return inf
         end
     elseif inf !== nothing
-        return true
+        return inf
     end
-    return false
+    return nothing
 end
 
 function ci_has_invoke(code::CodeInstance)
@@ -1560,7 +1578,7 @@ function add_codeinsts_to_jit!(interp::AbstractInterpreter, ci, source_mode::UIn
         callee = pop!(workqueue)
         ci_has_invoke(callee) && continue
         isinspected(workqueue, callee) && continue
-        src = _ci_get_source(interp, callee, codegen)
+        src = ci_get_source(interp, callee)
         if !isa(src, CodeInfo)
             newcallee = typeinf_ext(workqueue.interp, callee.def, source_mode) # always SOURCE_MODE_ABI
             if newcallee isa CodeInstance

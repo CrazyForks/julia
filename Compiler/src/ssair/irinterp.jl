@@ -22,7 +22,8 @@ function concrete_eval_invoke(interp::AbstractInterpreter, ci::CodeInstance, arg
         if is_constprop_edge_recursed(mi, parent)
             return Pair{Any,Tuple{Bool,Bool}}(nothing, (is_nothrow(effects), is_noub(effects)))
         end
-        newirsv = IRInterpretationState(interp, ci, mi, argtypes)
+        src = ci_get_source(interp, ci)
+        newirsv = IRInterpretationState(interp, ci, mi, argtypes, src)
         if newirsv !== nothing
             assign_parentchild!(newirsv, parent)
             return ir_abstract_constant_propagation(interp, newirsv)

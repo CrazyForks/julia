@@ -298,12 +298,13 @@ function abstract_call_gf_by_type(interp::AbstractInterpreter, @nospecialize(fun
                 local napplicable = length(applicable)
                 local multiple_matches = napplicable > 1
                 while inferidx[] <= napplicable
-                    (; match) = applicable[inferidx[]]
+                    (; match, call_results, edge_idx) = applicable[inferidx[]]
                     inferidx[] += 1
                     local method = match.method
                     local sig = match.spec_types
                     mi = specialize_method(match; preexisting=true)
-                    if mi === nothing || !const_prop_methodinstance_heuristic(interp, mi, arginfo, sv)
+                    local call_result = call_results[edge_idx]
+                    if mi === nothing || !(call_result isa InferenceResult) || !const_prop_methodinstance_heuristic(interp, call_result, mi, arginfo, sv)
                         csig = get_compileable_sig(method, sig, match.sparams)
                         if csig !== nothing && (!seenall || csig !== sig) # corresponds to whether the first look already looked at this, so repeating abstract_call_method is not useful
                             #println(sig, " changed to ", csig, " for ", method)
@@ -1046,7 +1047,9 @@ function maybe_get_const_prop_profitable(interp::AbstractInterpreter,
         return nothing
     end
     mi = mi::MethodInstance
-    if !force && !const_prop_methodinstance_heuristic(interp, mi, arginfo, sv)
+    inf_result = result.call_result
+    inf_result = inf_result isa InferenceResult ? inf_result : nothing
+    if !force && !const_prop_methodinstance_heuristic(interp, inf_result, mi, arginfo, sv)
         add_remark!(interp, sv, "[constprop] Disabled by method instance heuristic")
         return nothing
     end
@@ -1200,7 +1203,7 @@ end
 # where we would spend a lot of time, but are probably unlikely to get an improved
 # result anyway.
 function const_prop_methodinstance_heuristic(interp::AbstractInterpreter,
-    mi::MethodInstance, arginfo::ArgInfo, sv::AbsIntState)
+    inf_result::Union{InferenceResult,Nothing}, mi::MethodInstance, arginfo::ArgInfo, sv::AbsIntState)
     method = mi.def::Method
     if method.is_for_opaque_closure
         # Not inlining an opaque closure can be very expensive, so be generous
@@ -1230,9 +1233,8 @@ function const_prop_methodinstance_heuristic(interp::AbstractInterpreter,
         # was able to cut it down to something simple (inlineable in particular).
         # If so, there will be a good chance we might be able to const prop
         # all the way through and learn something new.
-        code = get(code_cache(interp), mi, nothing)
-        if isa(code, CodeInstance)
-            inferred = ci_get_source(interp, code)
+        if inf_result isa InferenceResult
+            inferred = inf_result.src
             # TODO propagate a specific `CallInfo` that conveys information about this call
             if src_inlining_policy(interp, mi, inferred, NoCallInfo(), IR_FLAG_NULL)
                 return true
@@ -1244,38 +1246,36 @@ end
 
 function semi_concrete_eval_call(interp::AbstractInterpreter,
     mi::MethodInstance, result::MethodCallResult, arginfo::ArgInfo, sv::AbsIntState)
-    mi_cache = code_cache(interp)
-    codeinst = get(mi_cache, mi, nothing)
-    if codeinst !== nothing
-        # TODO propagate a specific `CallInfo` that conveys information about this call
-        inferred = ci_get_source(interp, codeinst)
-        src_inlining_policy(interp, mi, inferred, NoCallInfo(), IR_FLAG_NULL) || return nothing # hack to work-around test failures caused by #58183 until both it and #48913 are fixed
-        irsv = IRInterpretationState(interp, codeinst, mi, arginfo.argtypes)
-        if irsv !== nothing
-            assign_parentchild!(irsv, sv)
-            rt, (nothrow, noub) = ir_abstract_constant_propagation(interp, irsv)
-            @assert !(rt isa Conditional || rt isa MustAlias) "invalid lattice element returned from irinterp"
-            if !(isa(rt, Type) && hasintersect(rt, Bool))
-                ir = irsv.ir
-                # TODO (#48913) enable double inlining pass when there are any calls
-                # that are newly resolved by irinterp
-                # state = InliningState(interp)
-                # ir = ssa_inlining_pass!(irsv.ir, state, propagate_inbounds(irsv))
-                effects = result.effects
-                if nothrow
-                    effects = Effects(effects; nothrow=true)
-                end
-                if noub
-                    effects = Effects(effects; noub=ALWAYS_TRUE)
-                end
-                exct = refine_exception_type(result.exct, effects)
-                semi_concrete_result = SemiConcreteResult(codeinst, ir, effects, spec_info(irsv))
-                const_edge = nothing # TODO use the edges from irsv?
-                return ConstCallResult(rt, exct, semi_concrete_result, effects, const_edge)
-            end
+    call_result = result.call_result
+    call_result isa InferenceResult || return nothing
+    codeinst = call_result.ci_as_edge
+    codeinst isa CodeInstance || return nothing
+    inferred = call_result.src
+    src_inlining_policy(interp, mi, inferred, NoCallInfo(), IR_FLAG_NULL) || return nothing # hack to work-around test failures caused by #58183 until both it and #48913 are fixed
+    irsv = IRInterpretationState(interp, codeinst, mi, arginfo.argtypes, inferred)
+    irsv === nothing && return nothing
+    assign_parentchild!(irsv, sv)
+    rt, (nothrow, noub) = ir_abstract_constant_propagation(interp, irsv)
+    @assert !(rt isa Conditional || rt isa MustAlias) "invalid lattice element returned from irinterp"
+    if !(isa(rt, Type) && hasintersect(rt, Bool))
+        ir = irsv.ir
+        # TODO (#48913) enable double inlining pass when there are any calls
+        # that are newly resolved by irinterp
+        # state = InliningState(interp)
+        # ir = ssa_inlining_pass!(irsv.ir, state, propagate_inbounds(irsv))
+        effects = result.effects
+        if nothrow
+            effects = Effects(effects; nothrow=true)
         end
+        if noub
+            effects = Effects(effects; noub=ALWAYS_TRUE)
+        end
+        exct = refine_exception_type(result.exct, effects)
+        semi_concrete_result = SemiConcreteResult(codeinst, ir, effects, spec_info(irsv))
+        const_edge = nothing # TODO use the edges from irsv?
+        return ConstCallResult(rt, exct, semi_concrete_result, effects, const_edge)
     end
-    return nothing
+    nothing
 end
 
 function const_prop_result(inf_result::InferenceResult)
