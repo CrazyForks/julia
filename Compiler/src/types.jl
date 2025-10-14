@@ -90,6 +90,10 @@ struct AnalysisResults
 end
 const NULL_ANALYSIS_RESULTS = AnalysisResults(nothing)
 
+# Abstract type for call inference results that can be stored in CallInfo
+# This is defined here so that InferenceResult can inherit from it
+abstract type InferredCallResult end
+
 """
     result::InferenceResult
 
@@ -100,7 +104,7 @@ There are two constructor available:
 - `InferenceResult(mi::MethodInstance, argtypes::Vector{Any}, overridden_by_const::BitVector)`
   for constant inference, with extended lattice information included in `result.argtypes`.
 """
-mutable struct InferenceResult
+mutable struct InferenceResult <: InferredCallResult
     #=== constant fields ===#
     const linfo::MethodInstance
     const argtypes::Vector{Any}
@@ -114,7 +118,6 @@ mutable struct InferenceResult
     ipo_effects::Effects              # if inference is finished
     effects::Effects                  # if optimization is finished
     analysis_results::AnalysisResults # AnalysisResults with e.g. result::ArgEscapeCache if optimized, otherwise NULL_ANALYSIS_RESULTS
-    is_src_volatile::Bool             # `src` has been cached globally as the compressed format already, allowing `src` to be used destructively
     tombstone::Bool
 
     #=== uninitialized fields ===#
@@ -126,7 +129,7 @@ mutable struct InferenceResult
         ipo_effects = effects = Effects()
         analysis_results = NULL_ANALYSIS_RESULTS
         return new(mi, argtypes, overridden_by_const, result, exc_result, src,
-            valid_worlds, ipo_effects, effects, analysis_results, #=is_src_volatile=#false, false)
+            valid_worlds, ipo_effects, effects, analysis_results, false)
     end
 end
 function InferenceResult(mi::MethodInstance, 𝕃::AbstractLattice=fallback_lattice)

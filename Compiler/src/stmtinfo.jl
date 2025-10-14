@@ -24,7 +24,7 @@ end
 struct NoCallInfo <: CallInfo end
 add_edges_impl(::Vector{Any}, ::NoCallInfo) = nothing
 
-abstract type InferredCallResult end
+# InferredCallResult is defined in types.jl so that InferenceResult can inherit from it
 
 struct CachedCallResult <: InferredCallResult
     src
@@ -32,21 +32,7 @@ struct CachedCallResult <: InferredCallResult
     edge::CodeInstance
 end
 
-struct VolatileInferenceResult <: InferredCallResult
-    inf_result::InferenceResult
-end
-
-struct LocalInferenceResult <: InferredCallResult
-    inf_result::InferenceResult
-end
-
-abstract type InferredConstCallResult <: InferredCallResult end
-
-struct ConstPropResult <: InferredConstCallResult
-    result::InferenceResult
-end
-
-struct ConcreteResult <: InferredConstCallResult
+struct ConcreteResult <: InferredCallResult
     edge::CodeInstance
     effects::Effects
     result
@@ -54,7 +40,7 @@ struct ConcreteResult <: InferredConstCallResult
     ConcreteResult(edge::CodeInstance, effects::Effects, @nospecialize val) = new(edge, effects, val)
 end
 
-struct SemiConcreteResult <: InferredConstCallResult
+struct SemiConcreteResult <: InferredCallResult
     edge::CodeInstance
     ir::IRCode
     effects::Effects

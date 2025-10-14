@@ -838,14 +838,8 @@ function resolve_todo(mi::MethodInstance, @nospecialize(call_result::Union{Nothi
 
     preserve_local_sources = true
     cached_ci = nothing
-    if isa(call_result, VolatileInferenceResult)
-        inferred_result = get_local_code(call_result.inf_result)
-        # volatile inference result can be inlined destructively
-        preserve_local_sources = !call_result.inf_result.is_src_volatile | OptimizationParams(state.interp).preserve_local_sources
-    elseif isa(call_result, LocalInferenceResult)
-        inferred_result = get_local_code(call_result.inf_result)
-    elseif isa(call_result, ConstPropResult)
-        inferred_result = get_local_code(call_result.result)
+    if isa(call_result, InferenceResult)
+        inferred_result = get_local_code(call_result)
     elseif isa(call_result, CachedCallResult)
         cached_ci = call_result.edge
         if use_const_api(cached_ci)
@@ -1183,8 +1177,8 @@ function handle_invoke_call!(todo::Vector{Pair{Int,Any}},
         item = semiconcrete_result_item(result, info, flag, state)
     else
         argtypes = invoke_rewrite(sig.argtypes)
-        if isa(result, ConstPropResult)
-            mi = result.result.linfo
+        if isa(result, InferenceResult)
+            mi = result.linfo
             validate_sparams(mi.sparam_vals) || return nothing
             if Union{} !== argtypes_to_type(argtypes) <: mi.def.sig
                 item = resolve_todo(mi, result, info, flag, state)
@@ -1316,7 +1310,7 @@ function handle_any_const_result!(cases::Vector{InliningCase},
         return handle_concrete_result!(cases, call_result, match, info, state)
     elseif isa(call_result, SemiConcreteResult)
         return handle_semi_concrete_result!(cases, call_result, match, info, flag, state)
-    elseif isa(call_result, ConstPropResult)
+    elseif isa(call_result, InferenceResult)
         return handle_const_prop_result!(cases, call_result, match, info, flag, state; allow_typevars)
     else
         return handle_match!(cases, call_result, match, argtypes, info, flag, state; allow_typevars)
@@ -1328,12 +1322,8 @@ function info_effects(@nospecialize(call_result::Union{Nothing,InferredCallResul
         return Effects()
     elseif isa(call_result, CachedCallResult)
         return call_result.effects
-    elseif isa(call_result, VolatileInferenceResult)
-        return call_result.inf_result.ipo_effects
-    elseif isa(call_result, LocalInferenceResult)
-        return call_result.inf_result.ipo_effects
-    elseif isa(call_result, ConstPropResult)
-        return call_result.result.ipo_effects
+    elseif isa(call_result, InferenceResult)
+        return call_result.ipo_effects
     elseif isa(call_result, ConcreteResult)
         return call_result.effects
     elseif isa(call_result, SemiConcreteResult)
@@ -1434,10 +1424,10 @@ function handle_match!(
     return true
 end
 
-function handle_const_prop_result!(cases::Vector{InliningCase}, result::ConstPropResult,
+function handle_const_prop_result!(cases::Vector{InliningCase}, result::InferenceResult,
     match::MethodMatch, @nospecialize(info::CallInfo), flag::UInt32, state::InliningState;
     allow_typevars::Bool)
-    mi = result.result.linfo
+    mi = result.linfo
     if !validate_sparams(mi.sparam_vals)
         (allow_typevars && !may_have_fcalls(mi.def::Method)) || return false
     end
@@ -1523,8 +1513,8 @@ function handle_opaque_closure_call!(todo::Vector{Pair{Int,Any}},
     ir::IRCode, idx::Int, stmt::Expr, info::OpaqueClosureCallInfo,
     flag::UInt32, sig::Signature, state::InliningState)
     result = info.result
-    if isa(result, ConstPropResult)
-        mi = result.result.linfo
+    if isa(result, InferenceResult)
+        mi = result.linfo
         validate_sparams(mi.sparam_vals) || return nothing
         item = resolve_todo(mi, result, info, flag, state)
     elseif isa(result, ConcreteResult)

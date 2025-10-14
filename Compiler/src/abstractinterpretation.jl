@@ -840,12 +840,12 @@ end
 struct ConstCallResult
     rt::Any
     exct::Any
-    const_result::InferredConstCallResult
+    const_result::InferredCallResult
     effects::Effects
     const_edge::Union{Nothing,CodeInstance}
     function ConstCallResult(
         @nospecialize(rt), @nospecialize(exct),
-        const_result::InferredConstCallResult, effects::Effects,
+        const_result::InferredCallResult, effects::Effects,
         const_edge::Union{Nothing,CodeInstance})
         return new(rt, exct, const_result, effects, const_edge)
     end
@@ -1280,8 +1280,7 @@ end
 
 function const_prop_result(inf_result::InferenceResult)
     @assert isdefined(inf_result, :ci_as_edge) "InferenceResult without ci_as_edge"
-    const_prop_result = ConstPropResult(inf_result)
-    return ConstCallResult(inf_result.result, inf_result.exc_result, const_prop_result,
+    return ConstCallResult(inf_result.result, inf_result.exc_result, inf_result,
                            inf_result.ipo_effects, inf_result.ci_as_edge)
 end
 
@@ -1302,8 +1301,8 @@ function const_prop_call(interp::AbstractInterpreter,
     forwarded_argtypes = compute_forwarded_argtypes(interp, arginfo, sv)
     # use `cache_argtypes` that has been constructed for fresh regular inference if available
     call_result = result.call_result
-    if call_result isa VolatileInferenceResult
-        cache_argtypes = call_result.inf_result.argtypes
+    if call_result isa InferenceResult
+        cache_argtypes = call_result.argtypes
     else
         cache_argtypes = matching_cache_argtypes(𝕃ᵢ, mi)
     end

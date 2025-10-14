@@ -116,7 +116,7 @@ function finish!(interp::AbstractInterpreter, caller::InferenceState, validation
             if inferred_result !== nothing
                 uncompressed = inferred_result
                 debuginfo = get_debuginfo(inferred_result)
-                # Inlining may fast-path the global cache via `VolatileInferenceResult`, so store it back here
+                # Inlining may fast-path the global cache via InferenceResult, so store it back here
                 result.src = inferred_result
             else
                 if isa(result.src, OptimizationState)
@@ -133,7 +133,6 @@ function finish!(interp::AbstractInterpreter, caller::InferenceState, validation
                     resize!(inferred_result.slotnames, nslots)
                 end
                 inferred_result = maybe_compress_codeinfo(interp, mi, inferred_result)
-                result.is_src_volatile = false
             elseif ci.owner === nothing
                 # The global cache can only handle objects that codegen understands
                 inferred_result = nothing
@@ -1121,11 +1120,7 @@ function typeinf_edge(interp::AbstractInterpreter, method::Method, @nospecialize
                 # note that this result is cached globally exclusively, so we can use this local result destructively
                 local call_result = if edge_ci isa CodeInstance && isinferred
                     result.ci_as_edge = edge_ci # set the edge for the inliner usage
-                    if cache_mode === CACHE_MODE_GLOBAL
-                        VolatileInferenceResult(result)
-                    else # cache_mode === CACHE_MODE_LOCAL
-                        LocalInferenceResult(result)
-                    end
+                    result
                 end
                 mresult[] = MethodCallResult(interp, caller, method, bestguess, exc_bestguess, effects,
                     edge, edgecycle, edgelimited, call_result)
