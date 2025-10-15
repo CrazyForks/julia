@@ -494,18 +494,21 @@ struct CustomData
     inferred
     CustomData(@nospecialize inferred) = new(inferred)
 end
-function Compiler.transform_result_for_cache(interp::CustomDataInterp, result::Compiler.InferenceResult, edges::Core.SimpleVector)
+function Compiler.transform_result_for_cache(
+    interp::CustomDataInterp, result::Compiler.InferenceResult, edges::Core.SimpleVector)
     inferred_result = @invoke Compiler.transform_result_for_cache(
         interp::Compiler.AbstractInterpreter, result::Compiler.InferenceResult, edges::Core.SimpleVector)
     return CustomData(inferred_result)
 end
-function Compiler.src_inlining_policy(interp::CustomDataInterp, @nospecialize(src),
-                            @nospecialize(info::Compiler.CallInfo), stmt_flag::UInt32)
+function Compiler.src_inlining_policy(
+    interp::CustomDataInterp, @nospecialize(src), @nospecialize(info::Compiler.CallInfo),
+    stmt_flag::UInt32)
     if src isa CustomData
         src = src.inferred
     end
-    return @invoke Compiler.src_inlining_policy(interp::Compiler.AbstractInterpreter, src::Any,
-                                          info::Compiler.CallInfo, stmt_flag::UInt32)
+    return @invoke Compiler.src_inlining_policy(
+        interp::Compiler.AbstractInterpreter, src::Any, info::Compiler.CallInfo,
+        stmt_flag::UInt32)
 end
 Compiler.retrieve_ir_for_inlining(cached_result::CodeInstance, src::CustomData) =
     Compiler.retrieve_ir_for_inlining(cached_result, src.inferred)
