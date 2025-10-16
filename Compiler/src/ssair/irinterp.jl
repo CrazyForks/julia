@@ -39,6 +39,7 @@ function abstract_eval_invoke_inst(interp::AbstractInterpreter, inst::Instructio
         mi_cache = code_cache(interp)
         code = get(mi_cache, ci, nothing)
         code === nothing && return Pair{Any,Tuple{Bool,Bool}}(nothing, (false, false))
+        code isa InferenceResult && (code = code.ci) # COMBAK: we shouldn't discard the src so easily here, as we might not be able to get it back again
     else
         code = ci::CodeInstance
     end

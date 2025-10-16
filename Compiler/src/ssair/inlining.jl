@@ -793,6 +793,7 @@ function compileable_specialization(code::Union{MethodInstance,CodeInstance}, ef
     # prefer using a CodeInstance gotten from the cache, since that is where the invoke target should get compiled to normally
     # TODO: can this code be gotten directly from inference sometimes?
     code = get(code_cache(state), mi_invoke, nothing)
+    code isa InferenceResult && (code = code.ci)
     if !isa(code, CodeInstance)
         #println("missing code for ", mi_invoke, " for ", mi)
         code = mi_invoke
@@ -1509,6 +1510,7 @@ function handle_finalizer_call!(ir::IRCode, idx::Int, stmt::Expr, info::Finalize
         item1 = cases[1].item
         if isa(item1, InliningTodo)
             code = get(code_cache(state), item1.mi, nothing) # COMBAK: this seems like a bad design, can we use stmt_info instead to store the correct info?
+            code isa InferenceResult && (code = code.ci)
             if code isa CodeInstance
                 push!(stmt.args, true)
                 push!(stmt.args, code)

@@ -666,7 +666,7 @@ GetNativeEscapeCache(interp::AbstractInterpreter) = GetNativeEscapeCache(code_ca
 function ((; code_cache)::GetNativeEscapeCache)(codeinst::Union{CodeInstance,MethodInstance})
     if codeinst isa MethodInstance
         codeinst = get(code_cache, codeinst, nothing)
-        codeinst isa CodeInstance || return false
+        codeinst === nothing && return false
     end
     argescapes = traverse_analysis_results(codeinst) do @nospecialize result
         return result isa EscapeAnalysis.ArgEscapeCache ? result : nothing
@@ -674,7 +674,7 @@ function ((; code_cache)::GetNativeEscapeCache)(codeinst::Union{CodeInstance,Met
     if argescapes !== nothing
         return argescapes
     end
-    effects = decode_effects(codeinst.ipo_purity_bits)
+    effects = codeinst isa CodeInstance ? decode_effects(codeinst.ipo_purity_bits) : codeinst.ipo_effects
     if is_effect_free(effects) && is_inaccessiblememonly(effects)
         # We might not have run EA on simple frames without any escapes (e.g. when optimization
         # is skipped when result is constant-folded by abstract interpretation). If those

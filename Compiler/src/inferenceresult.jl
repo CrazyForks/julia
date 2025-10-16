@@ -178,7 +178,7 @@ function elim_free_typevars(@nospecialize t)
     end
 end
 
-function const_cache_lookup(𝕃::AbstractLattice, mi::MethodInstance, given_argtypes::Vector{Any}, cache::Vector{InferenceResult})
+function constprop_cache_lookup(𝕃::AbstractLattice, mi::MethodInstance, given_argtypes::Vector{Any}, cache::Vector{InferenceResult})
     method = mi.def::Method
     nargtypes = length(given_argtypes)
     for cached_result in cache

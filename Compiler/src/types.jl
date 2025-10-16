@@ -510,14 +510,14 @@ setindex!(cache::OverlayCodeCache, ci::CodeInstance, mi::MethodInstance) = (seti
 haskey(cache::OverlayCodeCache, mi::MethodInstance) = get(cache, mi, nothing) !== nothing
 
 function get(cache::OverlayCodeCache, mi::MethodInstance, default)
-    for cached_result in cache.localcache
+    for cached_result in Iterators.reverse(cache.localcache)
         cached_result.tombstone && continue # ignore deleted entries (due to LimitedAccuracy)
         cached_result.linfo === mi || continue
         cached_result.overridden_by_const === nothing || continue
         isdefined(cached_result, :ci) || continue
         ci = cached_result.ci
         isdefined(ci, :inferred) || continue
-        return ci
+        return cached_result
     end
     return get(cache.globalcache, mi, default)
 end
@@ -525,7 +525,7 @@ end
 function getindex(cache::OverlayCodeCache, mi::MethodInstance)
     r = get(cache, mi, nothing)
     r === nothing && throw(KeyError(mi))
-    return r::CodeInstance
+    return r
 end
 
 code_cache(interp::AbstractInterpreter, #=extended_range=#::WorldRange) = code_cache(interp)

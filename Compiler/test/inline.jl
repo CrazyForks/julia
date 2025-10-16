@@ -631,10 +631,12 @@ g41299(f::Tf, args::Vararg{Any,N}) where {Tf,N} = f(args...)
 
 # https://github.com/JuliaLang/julia/issues/42078
 # idempotency of callsite inlining
-function getcache(mi::Core.MethodInstance)
+function getcacheci(mi::Core.MethodInstance)
     cache = Compiler.code_cache(Compiler.NativeInterpreter())
     codeinst = Compiler.get(cache, mi, nothing)
-    return isnothing(codeinst) ? nothing : codeinst
+    codeinst === nothing && return nothing
+    codeinst isa Compiler.InferenceResult && (codeinst = codeinst.ci)
+    return codeinst
 end
 @noinline f42078(a) = sum(sincos(a))
 let
@@ -652,7 +654,7 @@ let
     end
     let # make sure to discard the inferred source
         mi = only(methods(f42078)).specializations::Core.MethodInstance
-        codeinst = getcache(mi)::Core.CodeInstance
+        codeinst = getcacheci(mi)::Core.CodeInstance
         @atomic codeinst.inferred = nothing
     end
 

@@ -1307,7 +1307,7 @@ function const_prop_call(interp::AbstractInterpreter,
         cache_argtypes = matching_cache_argtypes(𝕃ᵢ, mi)
     end
     argtypes = matching_cache_argtypes(𝕃ᵢ, mi, forwarded_argtypes, cache_argtypes)
-    inf_result = const_cache_lookup(𝕃ᵢ, mi, argtypes, inf_cache)
+    inf_result = constprop_cache_lookup(𝕃ᵢ, mi, argtypes, inf_cache)
     if inf_result !== nothing
         # found the cache for this constant prop'
         if inf_result.result === nothing
@@ -1343,6 +1343,8 @@ function const_prop_call(interp::AbstractInterpreter,
         callstack = frame.callstack::Vector{AbsIntState}
         @assert callstack[end] === frame && length(callstack) == frame.frameid
         pop!(callstack)
+        # add to the cache to record that this will always fail
+        push!(get_inference_cache(interp), inf_result)
         return nothing
     end
     existing_edge = result.edge
