@@ -427,6 +427,13 @@ end
         end
         a = Bool
     elseif isa(b, ConditionalT)
+        if isa(a, Const) && isa(a.val, Bool)
+           if (a.val === true && b.thentype === Any && b.elsetype === Bottom) ||
+              (a.val === false && b.elsetype === Any && b.thentype === Bottom)
+               # this Conditional contains distinctly no lattice information, and is simply an alternative representation of the Const Bool used for internal tracking purposes
+               return true
+           end
+        end
         return false
     end
     return ⊑(widenlattice(lattice), a, b)
@@ -607,7 +614,7 @@ end
         if ti === widev
             return v
         end
-        valid_as_lattice(ti) || return Bottom
+        valid_as_lattice(ti, true) || return Bottom
         if widev <: Tuple
             new_fields = Vector{Any}(undef, length(v.fields))
             for i = 1:length(new_fields)
@@ -631,7 +638,7 @@ end
             return v
         end
         ti = typeintersect(widev, t)
-        valid_as_lattice(ti) || return Bottom
+        valid_as_lattice(ti, true) || return Bottom
         return PartialOpaque(ti, v.env, v.parent, v.source)
     end
     return tmeet(widenlattice(lattice), v, t)

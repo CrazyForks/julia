@@ -498,11 +498,11 @@ prevind(s::AbstractString, i::Int)                 = prevind(s, i, 1)
 
 function prevind(s::AbstractString, i::Int, n::Int)
     n < 0 && throw(ArgumentError("n cannot be negative: $n"))
-    z = ncodeunits(s) + 1
+    z = ncodeunits(s)::Int + 1
     @boundscheck 0 < i ≤ z || throw(BoundsError(s, i))
-    n == 0 && return thisind(s, i) == i ? i : string_index_err(s, i)
+    n == 0 && return thisind(s, i)::Int == i ? i : string_index_err(s, i)
     while n > 0 && 1 < i
-        @inbounds n -= isvalid(s, i -= 1)
+        @inbounds n -= isvalid(s, i -= 1)::Bool
     end
     return i - n
 end
@@ -557,11 +557,11 @@ nextind(s::AbstractString, i::Int)                 = nextind(s, i, 1)
 
 function nextind(s::AbstractString, i::Int, n::Int)
     n < 0 && throw(ArgumentError("n cannot be negative: $n"))
-    z = ncodeunits(s)
+    z = ncodeunits(s)::Int
     @boundscheck 0 ≤ i ≤ z || throw(BoundsError(s, i))
-    n == 0 && return thisind(s, i) == i ? i : string_index_err(s, i)
+    n == 0 && return thisind(s, i)::Int == i ? i : string_index_err(s, i)
     while n > 0 && i < z
-        @inbounds n -= isvalid(s, i += 1)
+        @inbounds n -= isvalid(s, i += 1)::Bool
     end
     return i + n
 end
@@ -794,6 +794,8 @@ write(io::IO, s::CodeUnits) = write(io, s.s)
 
 unsafe_convert(::Type{Ptr{T}},    s::CodeUnits{T}) where {T} = unsafe_convert(Ptr{T}, s.s)
 unsafe_convert(::Type{Ptr{Int8}}, s::CodeUnits{UInt8}) = unsafe_convert(Ptr{Int8}, s.s)
+
+similar(::Type{<:CodeUnits{T}}, dims::Dims) where {T} = similar(Array{T}, dims)
 
 """
     codeunits(s::AbstractString)

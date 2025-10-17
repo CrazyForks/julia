@@ -112,7 +112,7 @@ static int8_t jl_cachearg_offset(jl_methtable_t *mt)
 
 static uint_t speccache_hash(size_t idx, jl_svec_t *data)
 {
-    jl_method_instance_t *ml = (jl_method_instance_t*)jl_svecref(data, idx);
+    jl_method_instance_t *ml = (jl_method_instance_t*)jl_svecref(data, idx); // This must always happen inside the lock
     jl_value_t *sig = ml->specTypes;
     if (jl_is_unionall(sig))
         sig = jl_unwrap_unionall(sig);
@@ -121,6 +121,8 @@ static uint_t speccache_hash(size_t idx, jl_svec_t *data)
 
 static int speccache_eq(size_t idx, const void *ty, jl_svec_t *data, uint_t hv)
 {
+    if (idx >= jl_svec_len(data))
+        return 0; // We got a OOB access, probably due to a data race
     jl_method_instance_t *ml = (jl_method_instance_t*)jl_svecref(data, idx);
     jl_value_t *sig = ml->specTypes;
     if (ty == sig)
@@ -3376,7 +3378,7 @@ static int sort_mlmatches(jl_array_t *t, size_t idx, arraylist_t *visited, array
             continue; // already part of this cycle
         jl_method_match_t *matc2 = (jl_method_match_t*)jl_array_ptr_ref(t, childidx);
         jl_method_t *m2 = matc2->method;
-        int subt2 = matc2->fully_covers != NOT_FULLY_COVERS; // jl_subtype((jl_value_t*)type, (jl_value_t*)m2->sig)
+        int subt2 = matc2->fully_covers == FULLY_COVERS; // jl_subtype((jl_value_t*)type, (jl_value_t*)m2->sig)
         // TODO: we could change this to jl_has_empty_intersection(ti, (jl_value_t*)matc2->spec_types);
         // since we only care about sorting of the intersections the user asked us about
         if (!subt2 && jl_has_empty_intersection(m2->sig, m->sig))
@@ -3521,7 +3523,7 @@ static int sort_mlmatches(jl_array_t *t, size_t idx, arraylist_t *visited, array
                     size_t idx2 = (size_t)stack->items[j];
                     jl_method_match_t *matc2 = (jl_method_match_t*)jl_array_ptr_ref(t, idx2);
                     jl_method_t *m2 = matc2->method;
-                    int subt2 = matc2->fully_covers != NOT_FULLY_COVERS; // jl_subtype((jl_value_t*)type, (jl_value_t*)m2->sig)
+                    int subt2 = matc2->fully_covers == FULLY_COVERS; // jl_subtype((jl_value_t*)type, (jl_value_t*)m2->sig)
                     // if their intersection contributes to the ambiguity cycle
                     // and the contribution of m is fully ambiguous with the portion of the cycle from m2
                     if (subt2 || jl_subtype((jl_value_t*)ti, m2->sig)) {
