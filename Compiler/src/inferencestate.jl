@@ -348,7 +348,7 @@ mutable struct InferenceState
         bb_vartable1 = bb_vartables[1] = VarTable(undef, nslots)
         argtypes = result.argtypes
 
-        argtypes = va_process_argtypes(typeinf_lattice(interp), argtypes, src.nargs, src.isva)
+        argtypes = va_process_argtypes(typeinf_lattice(interp), argtypes, src.nargs, src.isva, mi)
 
         nargtypes = length(argtypes)
         for i = 1:nslots
@@ -872,7 +872,7 @@ function IRInterpretationState(
     end
     spec_info = SpecInfo(src)
     ir = inflate_ir(src, mi)
-    argtypes = va_process_argtypes(optimizer_lattice(interp), argtypes, src.nargs, src.isva)
+    argtypes = va_process_argtypes(optimizer_lattice(interp), argtypes, src.nargs, src.isva, mi)
     return IRInterpretationState(interp, spec_info, ir, mi, argtypes,
                                  codeinst.min_world, codeinst.max_world)
 end

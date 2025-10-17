@@ -89,7 +89,7 @@ function is_argtype_match(𝕃::AbstractLattice,
     end
 end
 
-function va_process_argtypes(𝕃::AbstractLattice, given_argtypes::Vector{Any}, nargs::UInt, isva::Bool)
+function va_process_argtypes(𝕃::AbstractLattice, given_argtypes::Vector{Any}, nargs::UInt, isva::Bool, mi::MethodInstance)
     nargs = Int(nargs)
     if isva || (!isempty(given_argtypes) && isvarargtype(given_argtypes[end]))
         isva_given_argtypes = Vector{Any}(undef, nargs)
@@ -120,7 +120,10 @@ function va_process_argtypes(𝕃::AbstractLattice, given_argtypes::Vector{Any},
         end
         return isva_given_argtypes
     end
-    @assert length(given_argtypes) == nargs "invalid `given_argtypes` for `mi`"
+    if length(given_argtypes) != nargs
+        println(given_argtypes, " != ", nargs, " for ", mi)
+        throw(AssertionError("invalid `given_argtypes` for `mi`"))
+    end
     return given_argtypes
 end
 

@@ -1732,7 +1732,7 @@ function try_resolve_finalizer!(ir::IRCode, alloc_idx::Int, finalizer_idx::Int, 
             if inline::Bool && try_inline_finalizer!(ir, argexprs, loc, ci, info, inlining, attach_after)
                 # the finalizer body has been inlined
             else
-                newinst = add_flag(NewInstruction(Expr(:invoke, ci, argexprs...), Nothing), flag)
+                newinst = add_flag(NewInstruction(Expr(:invoke, ci, argexprs...), Any), flag)
                 insert_node!(ir, loc, newinst, attach_after)
             end
         end

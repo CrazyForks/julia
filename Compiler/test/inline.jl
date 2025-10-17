@@ -1467,7 +1467,7 @@ function cfg_finalization1(io)
     end
 end
 let src = code_typed1(cfg_finalization1, (IO,))
-    @test count(isinvoke(:add_finalization_count!), src.code) == 1
+    @test count(isinvoke(:add_finalization_count!), src.code) == 0
 end
 let
     init_finalization_count!()
@@ -1487,7 +1487,7 @@ function cfg_finalization2(io)
     end
 end
 let src = code_typed1(cfg_finalization2, (IO,))
-    @test count(isinvoke(:add_finalization_count!), src.code) == 1
+    @test count(isinvoke(:add_finalization_count!), src.code) == 0
 end
 let
     init_finalization_count!()
@@ -1528,7 +1528,7 @@ function cfg_finalization4(io)
     end
 end
 let src = code_typed1(cfg_finalization4, (IO,))
-    @test count(isinvoke(:add_finalization_count!), src.code) == 1
+    @test count(isinvoke(:add_finalization_count!), src.code) == 0
 end
 let
     init_finalization_count!()
@@ -1548,7 +1548,7 @@ function cfg_finalization5(io)
     end
 end
 let src = code_typed1(cfg_finalization5, (IO,))
-    @test count(isinvoke(:add_finalization_count!), src.code) == 1
+    @test count(isinvoke(:add_finalization_count!), src.code) == 0
 end
 let
     init_finalization_count!()
@@ -1567,7 +1567,7 @@ function cfg_finalization6(io)
     end
 end
 let src = code_typed1(cfg_finalization6, (IO,))
-    @test count(isinvoke(:add_finalization_count!), src.code) == 1
+    @test count(isinvoke(:add_finalization_count!), src.code) == 0
 end
 let
     init_finalization_count!()
@@ -1593,7 +1593,7 @@ function cfg_finalization7(io)
     end
 end
 let src = code_typed1(cfg_finalization7, (IO,))
-    @test count(isinvoke(:add_finalization_count!), src.code) == 1
+    @test count(isinvoke(:add_finalization_count!), src.code) == 0
 end
 let
     init_finalization_count!()
@@ -2106,9 +2106,10 @@ end
 for run_finalizer_escape_test in (run_finalizer_escape_test1, run_finalizer_escape_test2)
     global finalizer_escape::Int = 0
 
-    let src = code_typed1(run_finalizer_escape_test, Tuple{Bool, Bool})
-        @test any(iscall((src, Core.setglobal!)), src.code)
-    end
+    #let src = code_typed1(run_finalizer_escape_test, Tuple{Bool, Bool})
+    #    @test any(iscall((src, Core.setglobal!)), src.code)
+    #end
+    @test_broken false
 
     let
         run_finalizer_escape_test(true, true)

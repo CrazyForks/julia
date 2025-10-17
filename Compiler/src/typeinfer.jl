@@ -1241,6 +1241,8 @@ function codeinfo_for_const(::AbstractInterpreter, mi::MethodInstance, worlds::W
     tree.min_world = first(worlds)
     tree.max_world = last(worlds)
     tree.edges = edges
+    tree.nargs = UInt64(nargs)
+    tree.isva = method.isva
     set_inlineable!(tree, true)
     tree.parent = mi
     return tree
